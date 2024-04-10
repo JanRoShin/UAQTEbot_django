@@ -1,0 +1,29 @@
+{% load static %}
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chatbot Conversation</title>
+    <link rel="stylesheet" href="{% static 'css/chatbox.css' %}" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="flex justify-center items-center">
+    <div class="container">
+      <div
+        class="chat-container font-sans text-base font-normal"
+        id="chat-container"
+      >
+        <!-- Chat messages will be displayed here -->
+      </div>
+      <div class="input-container">
+        <input type="text" id="user-input" placeholder="Type your message..." />
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+    <script src="{% static 'js/convo.js' %}"></script>
+  </body>
+</html>

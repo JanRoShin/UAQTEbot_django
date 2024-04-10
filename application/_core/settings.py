@@ -74,9 +74,13 @@ WSGI_APPLICATION = "application._core.wsgi.application"
 
 # mar - custom
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "_core/database/db.sqlite3",
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'qadb',
+        'USER': 'root',
+        'PASSWORD': 'BRT.mySQL2$24',
+        'HOST': '127.0.0.1',
+        'PORT': '3306',
     }
 }
 
