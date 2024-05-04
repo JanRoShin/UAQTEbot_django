@@ -1,78 +1,46 @@
 import pandas as pd
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-from gan_model import Generator, Discriminator  # Import your GAN model
+import random
+from nltk.corpus import wordnet
+import nltk
+from nltk import pos_tag
+from nltk.tokenize import word_tokenize
+
+# Download the necessary NLTK resources
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
 
 # Load the dataset
-dataset = pd.read_csv("UAQTEbot_dataset.csv")
+dataset = pd.read_csv("question_answer_dataset.csv")
 
-# Preprocess the dataset as needed
+# Function to replace verbs with synonyms
+def replace_verb_synonyms(sentence):
+    words = word_tokenize(sentence)
+    tagged_words = pos_tag(words)
+    for i, (word, tag) in enumerate(tagged_words):
+        if tag.startswith('VB'):  # Check if the word is a verb
+            synsets = wordnet.synsets(word, pos='v')
+            if synsets:
+                synonym = random.choice(synsets).lemma_names()[0]
+                words[i] = synonym
+    return ' '.join(words)
 
-# Convert dataset to PyTorch tensors
-# Assuming you have functions to preprocess and convert text data to tensors
-questions_tensor = preprocess_and_convert_to_tensor(dataset['Questions'])
-answers_tensor = preprocess_and_convert_to_tensor(dataset['Answers'])
+# Specify the number of new rows to add
+num_new_rows = 100
 
-# Define GAN parameters
-latent_dim = 100
-num_epochs = 1000
-batch_size = 64
+# Augment the dataset
+augmented_questions = []
+augmented_answers = []
 
-# Initialize the generator and discriminator
-generator = Generator(latent_dim, output_dim=questions_tensor.shape[1])
-discriminator = Discriminator(input_dim=questions_tensor.shape[1])
+for index, row in dataset.iterrows():
+    question = row['Question']
+    answer = row['Answer']
+    for _ in range(num_new_rows):
+        augmented_questions.append(replace_verb_synonyms(question))
+        augmented_answers.append(replace_verb_synonyms(answer))
 
-# Define loss functions and optimizers
-criterion = nn.BCELoss()
-gen_optimizer = optim.Adam(generator.parameters(),
-                           lr=0.0002, betas=(0.5, 0.999))
-dis_optimizer = optim.Adam(discriminator.parameters(),
-                           lr=0.0002, betas=(0.5, 0.999))
-
-# Train the GAN
-for epoch in range(num_epochs):
-    for batch in DataLoader(TensorDataset(questions_tensor), batch_size=batch_size, shuffle=True):
-        real_questions = batch
-        real_labels = torch.ones(batch_size, 1)
-        fake_labels = torch.zeros(batch_size, 1)
-
-        # Train discriminator
-        discriminator.zero_grad()
-        real_outputs = discriminator(real_questions)
-        real_loss = criterion(real_outputs, real_labels)
-
-        noise = torch.randn(batch_size, latent_dim)
-        fake_questions = generator(noise)
-        fake_outputs = discriminator(fake_questions.detach())
-        fake_loss = criterion(fake_outputs, fake_labels)
-
-        dis_loss = real_loss + fake_loss
-        dis_loss.backward()
-        dis_optimizer.step()
-
-        # Train generator
-        generator.zero_grad()
-        noise = torch.randn(batch_size, latent_dim)
-        fake_questions = generator(noise)
-        outputs = discriminator(fake_questions)
-        gen_loss = criterion(outputs, real_labels)
-        gen_loss.backward()
-        gen_optimizer.step()
-
-# Generate synthetic data using the trained generator
-num_synthetic_samples = 1000
-noise = torch.randn(num_synthetic_samples, latent_dim)
-synthetic_questions = generator(noise).detach().numpy()
-
-# Augment the original dataset with synthetic samples
-augmented_questions = np.vstack(
-    (questions_tensor.numpy(), synthetic_questions))
-augmented_answers = ...  # Use original answers or generate corresponding synthetic answers
+# Combine questions and answers into batches
+augmented_data = [{'Question': q, 'Answer': a} for q, a in zip(augmented_questions, augmented_answers)]
 
 # Save augmented data
-augmented_dataset = pd.DataFrame(
-    {'Questions': augmented_questions, 'Answers': augmented_answers})
-augmented_dataset.to_csv("augmented_UAQTEbot_dataset.csv", index=False)
+augmented_dataset = pd.DataFrame(augmented_data)
+augmented_dataset.to_csv("augmented_question_answer_dataset.csv", index=False)
