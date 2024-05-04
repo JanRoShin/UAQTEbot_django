@@ -53,7 +53,8 @@ def find_closest_match(user_input, database):
 def get_response(user_input, database):
     # Common greetings and responses
     greetings = ["hello", "hi", "hey"]
-    thank_you = ["thank you", "thanks"]
+    thank_you = ["thank you", "thanks", "okay, thank you", " okay, thanks", "okay thank you", "okay thanks"]
+    okay = ["okay"]
 
     user_input_lower = user_input.lower()
 
@@ -66,19 +67,28 @@ def get_response(user_input, database):
             "Hey! What are your questions?"
         ]
         # Randomly select a greeting response
-        response = random.choice(greeting_responses)
-        return response
+        greet_response = random.choice(greeting_responses)
+        return greet_response
 
     # Check if the lowercase user input matches any of the lowercase thank you phrases
     if any(thanks in user_input_lower for thanks in thank_you):
         return "You're welcome!"
+
+    if any(approval in user_input_lower for approval in okay):
+        # Define variations of okay
+        okay_responses = [
+            "Are there any more questions that you would like to ask?", "Is there anything more that I can help you with?"
+        ]
+        # Randomly select a okay response
+        approve_response = random.choice(okay_responses)
+        return approve_response
 
     closest_question = find_closest_match(user_input, database)
     if closest_question:
         return database.get(closest_question, "Sorry, I couldn't find a suitable answer.")
     else:
         return "Sorry, I didn't understand that question."
-"""\
+
 # Main function to interact with the chatbot
 def start_chat():
     database = retrieve_db_QA()
@@ -98,4 +108,3 @@ def start_chat():
 # Start the chatbot
 if __name__ == "__main__":
     start_chat()
-    """

@@ -3,7 +3,7 @@ function sendMessage() {
   if (!userInput.trim()) {
     return; // Exit the function if input is empty
   }
-  displayMessage("You", userInput);
+  displayMessage("message", userInput);
   document.getElementById("user-input").value = "";
   fetch("/chat/", {
     method: "POST",
@@ -39,7 +39,7 @@ function displayMessage(sender, message) {
   var chatContainer = document.getElementById("chat-container");
   var messageElement = document.createElement("div");
   messageElement.classList.add("message");
-  if (sender === "You") {
+  if (sender === "message") {
     messageElement.classList.add("user");
   } else {
     messageElement.classList.add("UAQTEbot");

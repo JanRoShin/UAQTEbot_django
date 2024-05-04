@@ -3,7 +3,8 @@
 @tailwind utilities;
 
 .container {
-  max-width: 600px;
+  width: 100%;
+  max-width: 300px;
   padding: 20px;
   border: 1px solid #ccc;
   border-radius: 5px;
@@ -49,7 +50,7 @@
 }
 
 /* Style for chatbot reply */
-.message.bot {
+.message.UAQTEbot {
   background-color: #d4eefc; /* Light blue background */
   border: 1px solid #90cdf4; /* Light blue border */
   margin-bottom: 5px; /* Spacing between messages */
