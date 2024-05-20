@@ -1,0 +1,40 @@
+{% load static %}
+
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chatbot Conversation</title>
+  <link rel="shortcut icon" href="{% static 'img/bot_icon.png' %}" type="image/x-icon" />
+  <link rel="stylesheet" href="{% static 'css/chatbox.css' %}" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+</head>
+
+<body class="flex items-center justify-center mx-80" bgcolor="#c7e1d5">
+  <div class="max-h-10">
+    <nav class="bg-black-500"></nav>
+  </div>
+  <div class="container">
+    <div class="flex justify-center">
+      <div><img src="{% static 'img/uaqte.png' %}" style="width: 100px;"></div>
+      <center>
+        <strong>
+          <p style="font-size: large;">UAQTEBOT<br>Universal Access to Quality Tertiary Education Act</p>
+        </strong>
+      </center>
+      <div><img src="{% static 'img/uaqte.png' %}" style="width: 100px;"></div>
+    </div>
+
+    <div class="font-sans text-base font-normal chat-container" id="chat-container">
+      <!-- Chat messages will be displayed -->
+    </div>
+    <div class="input-container">
+      <input type="text" id="user-input" placeholder="Type your message..." />
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+  <script src="{% static 'js/convo.js' %}"></script>
+</body>
+
+</html>

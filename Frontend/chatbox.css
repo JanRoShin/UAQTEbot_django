@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+.container {
+  width: 100%;
+  max-width: 300px;
+  padding: 20px;
+  border: 2px solid black;
+  border-radius: 5px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  background-color: #f7f7d5;
+}
+
+.chat-container {
+  height: 300px;
+  overflow-y: scroll;
+  padding: 10px;
+  border: 2px solid black;
+  border-radius: 5px;
+  margin-bottom: 20px;
+  background-color: #eef8fe;
+}
+
+.input-container {
+  display: flex;
+  align-items: center;
+}
+
+.input-container input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px 0 0 5px;
+}
+
+.input-container button {
+  padding: 8px;
+  border: none;
+  border-radius: 0 5px 5px 0;
+  background-color: #007bff;
+  color: #fff;
+  cursor: pointer;
+}
+
+.message.user {
+  background-color: #e2f0cb; /* Light green background */
+  border: 1px solid #a9d18e; /* Light green border */
+  margin-bottom: 5px; /* Spacing between messages */
+  padding: 10px; /* Padding around message content */
+  border-radius: 10px; /* Rounded corners */
+}
+
+/* Style for chatbot reply */
+.message.UAQTEbot {
+  background-color: #d4eefc; /* Light blue background */
+  border: 1px solid #90cdf4; /* Light blue border */
+  margin-bottom: 5px; /* Spacing between messages */
+  padding: 10px; /* Padding around message content */
+  border-radius: 10px; /* Rounded corners */
+}
+
+body{
+  background-image: url(/application/static/img/chatbot-internet-bot.png);
+  background-blend-mode: screen;
+  background-repeat: round;
+}

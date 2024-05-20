@@ -130,3 +130,5 @@ CACHES = {
         "LOCATION": "DataFlair",
     }
 }
+
+CSRF_COOKIE_SECURE  = False
