@@ -16,7 +16,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "default_secret_key")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 # separate the hosts with a space
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS").split(" ")
+ALLOWED_HOSTS = ['*']
 
 # Open the settings.py file and look for the INSTALLED_APPS list
 INSTALLED_APPS = [

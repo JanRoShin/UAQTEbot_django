@@ -1,25 +1,41 @@
 import textdistance as LDA
-from tensorflow import keras
 import re
 import pandas as pd
 import string
 import nltk
-from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import random
-from gensim.models import Word2Vec
 import numpy as np
+import keras.backend as K
 import tensorflow as tf
-from tensorflow import keras
+from tensorflow.keras import preprocessing
+from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.layers import Input, LSTM, Dense, Embedding, Attention
 from tensorflow.keras.callbacks import ModelCheckpoint
 from sklearn.model_selection import train_test_split
-from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from collections import Counter
 import mysql.connector
+import colorama
+from colorama import Fore, Back, Style
+colorama.init(autoreset=True)
+
+import tensorflow as tf
+
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+  try:
+    # Currently, memory growth needs to be the same across GPUs
+    for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+    logical_gpus = tf.config.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Memory growth must be set before GPUs have been initialized
+    print(e)
 
 def preprocess_text_output(text):
     # Convert text to lowercase
@@ -98,6 +114,18 @@ def preprocess_text_input(text):
 
     text = re.sub(r"\b(?:{})\b".format("|".join(contraction_mapping.keys())), replace_contractions, text, flags=re.IGNORECASE)
 
+    text = re.sub(r"\.", " . ", text)
+    text = re.sub(r"\?", " ? ", text)
+    text = re.sub(r"!", " ! ", text)
+    text = re.sub(r"/", " / ", text)
+    text = re.sub(r",", " , ", text)
+    text = re.sub(r'"', ' " ', text)
+    text = re.sub(r"-", " - ", text)
+
+    text = re.sub(r"[-,.{}+=|?'()\:@]", "", text)
+
+    text = text.replace('\n', '')
+
     # Convert text to lowercase
     text = text.lower()
 
@@ -126,6 +154,12 @@ def retrieve_db_for_lda():
         print("Error retrieving data from database:", e)
         return {}
 
+# Function to remove rows with missing values
+def remove_rows_with_missing_values(df, columns):
+    missing_values_mask = df[columns].isnull().any(axis=1)
+    cleaned_df = df[~missing_values_mask]
+    return cleaned_df
+
 def retrieve_data_for_model():
     try:
         # Establish a connection to your MySQL database
@@ -141,25 +175,38 @@ def retrieve_data_for_model():
         cursor = connection.cursor()
         cursor.execute(query)
 
-        # Fetch data and store in lists
-        ques = []
-        ans = []
-        for row in cursor:
-            ques.append(row[0])
-            ans.append(row[1])
+        # Fetch data and store in DataFrame
+        data = cursor.fetchall()
+        df = pd.DataFrame(data, columns=['Questions', 'Answers'])
+
+        print(df)
+
+        df = remove_rows_with_missing_values(df, ['Questions', 'Answers'])
+
+        questions = df["Questions"].tolist()
+        answers = df["Answers"].tolist()
+
+        # Check for missing values in 'Questions' and 'Answers' columns
+        missing_questions = df['Questions'].isnull()
+        missing_answers = df['Answers'].isnull()
+
+        # Filter out missing values
+        questions = df.loc[~missing_questions, 'Questions'].tolist()
+        answers = df.loc[~missing_answers, 'Answers'].tolist()
 
         # Close the connection to the MySQL database
         connection.close()
 
-        return ques, ans
+        # Preprocess the questions and answers
+        cl_ques = [preprocess_text_input(question) for question in questions]
+        cl_ans = [preprocess_text_input(answer) for answer in answers]
+
+        return cl_ques, cl_ans
     except Exception as e:
         print(f"Error retrieving data from MySQL database: {str(e)}")
         return [], []
 
-ques, ans = retrieve_data_for_model()
-
-cl_ques = [preprocess_text_input(question) for question in ques]
-cl_ans = [preprocess_text_input(answer) for answer in ans]
+cl_ques, cl_ans = retrieve_data_for_model()
 
 # Function to preprocess text
 def find_closest_match(user_input, database):
@@ -175,6 +222,7 @@ def find_closest_match(user_input, database):
             best_score = score
             best_match = question
     return best_match
+
 def handle_custom_responses(user_input):
     # Common greetings and responses
     greetings = ["hello", "hi", "hey"]
@@ -217,94 +265,51 @@ def get_response_from_database(user_input, database):
         return database.get(closest_question, "Sorry, I couldn't find a suitable answer.")
     else:
         return "Sorry, I didn't understand that question."
+    
+# Preprocessing
+answers_with_tags = ['<START> ' + answer + ' <END>' for answer in cl_ans]
 
+tokenizer = preprocessing.text.Tokenizer()
+tokenizer.fit_on_texts(cl_ques + answers_with_tags)
 
+# Ensure special tokens are in the tokenizer vocabulary
+special_tokens = ['<START>', '<END>', '<OUT>']
+for token in special_tokens:
+    if token not in tokenizer.word_index:
+        tokenizer.word_index[token] = len(tokenizer.word_index) + 1
 
+VOCAB_SIZE = len(tokenizer.word_index) + 1
 
+# Tokenize and pad questions
+tokenized_questions = tokenizer.texts_to_sequences(cl_ques)
+maxlen_questions = max([len(x) for x in tokenized_questions])
+encoder_input_data = preprocessing.sequence.pad_sequences(tokenized_questions, maxlen=maxlen_questions, padding='post')
 
+# Tokenize and pad answers
+tokenized_answers = tokenizer.texts_to_sequences(answers_with_tags)
+maxlen_answers = max([len(x) for x in tokenized_answers])
+decoder_input_data = preprocessing.sequence.pad_sequences(tokenized_answers, maxlen=maxlen_answers, padding='post')
 
+# Remove the start token for decoder output data
+decoder_output_data = []
+for seq in tokenized_answers:
+    decoder_output_data.append(seq[1:])  # Remove the start token
+decoder_output_data = preprocessing.sequence.pad_sequences(decoder_output_data, maxlen=maxlen_answers, padding='post')
 
+LSTM_SIZE = 512
+LR = 0.0001
+EPOCH = 200
+BATCH_SIZE = 64
 
-
-max_question_length = max(len(question.split()) for question in cl_ques)
-max_answer_length = max(len(answer.split()) for answer in cl_ans)
-
-print("Maximum question length:", max_question_length)
-print("Maximum answer length:", max_answer_length)
-
-max_sequence_length = 100
-lstm=512
-
-# Vocabulary creation and tokenization
-word2count = {}
-for line in cl_ques + cl_ans:
-    for word in line.split():
-        word2count[word] = word2count.get(word, 0) + 1
-
-vocab = {word: idx for idx, word in enumerate(word2count.keys())}
-vocab.update({'<PAD>': len(vocab), '<EOS>': len(vocab)+1, '<OUT>': len(vocab)+2, '<SOS>': len(vocab)+3})
-
-inv_vocab = {v: w for w, v in vocab.items()}
-
-print(len(vocab))
-
-# Convert text to sequences
-def text_to_sequences(text, vocab):
-    return [[vocab.get(word, vocab['<OUT>']) for word in line.split()] for line in text]
-
-
-
-encoder_inp = pad_sequences(text_to_sequences(cl_ques, vocab), maxlen=max_sequence_length, padding='post', truncating='post')
-decoder_inp = pad_sequences(text_to_sequences(['<SOS> ' + answer + ' <EOS>' for answer in cl_ans], vocab), maxlen=max_sequence_length, padding='post', truncating='post')
-decoder_final_output = to_categorical(pad_sequences(decoder_inp[:, 1:], maxlen=max_sequence_length, padding='post', truncating='post'), num_classes=len(vocab))
-
-
-
-# Train Word2Vec model
-sentences = [text.split() for text in cl_ques + cl_ans]
-word2vec_model = Word2Vec(sentences, vector_size=256, window=5, min_count=1, workers=4)
-
-# Get Word2Vec embeddings and vocabulary
-word_vectors = word2vec_model.wv
-word_vocab = word_vectors.key_to_index
-
-# Replace the existing embedding layer with Word2Vec embeddings
-embedding_matrix = np.zeros((len(vocab), word_vectors.vector_size))
-for word, i in vocab.items():
-    if word in word_vocab:
-        embedding_matrix[i] = word_vectors[word]
-
-
-
-# Define model architecture
-embedding_layer = Embedding(len(vocab), word_vectors.vector_size, trainable=True, weights=[embedding_matrix])
-encoder_input = Input(shape=(519,))
-encoder_embed = embedding_layer(encoder_input)
-encoder_lstm = LSTM(lstm, return_sequences=True, return_state=True)
-encoder_output, encoder_h, encoder_c = encoder_lstm(encoder_embed)
-encoder_states = [encoder_h, encoder_c]
-
-# Define attention layer
-attention_layer = Attention()
-
-decoder_input = Input(shape=(519,))
-decoder_embed = embedding_layer(decoder_input)
-
-decoder_lstm = LSTM(lstm, return_sequences=True, return_state=True)
-decoder_output, _, _ = decoder_lstm(decoder_embed, initial_state=encoder_states)
-attention_output = attention_layer([decoder_output, encoder_output])
-decoder_concat_input = tf.concat([decoder_output, attention_output], axis=-1)
-
-decoder_dense = Dense(len(vocab), activation='softmax')
-decoder_output = decoder_dense(decoder_output)
-
-
-
-
-
+# Define Word2Vec model parameters
+VECTOR_SIZE = 1024 
+WINDOW = 5 
+MIN_COUNT = 1 
+WORKERS = 4
+SG = 1 
 
 def load_seq2seq_model():
-    seq2seq_model_path = 'C:/Users/JanRoShin/Desktop/UAQTEbot_django/application/Models/model20_10k_w_att.h5'
+    seq2seq_model_path = 'C:/Users/JanRoShin/Desktop/GitHub/UAQTEbot_django/application\Models/T200.keras'
     
     try:
         # Load the Seq2Seq model
@@ -315,38 +320,102 @@ def load_seq2seq_model():
         print(f"Error loading Seq2Seq model: {str(e)}")
         return None
 
-seq2seq_model=load_seq2seq_model()
+model1 = load_seq2seq_model()
 
-seq2seq_model.summary()
+#loss, accuracy = model1.evaluate([encoder_input_data, decoder_input_data], decoder_output_data)
+#print(f'Validation Loss: {loss}, Validation Accuracy: {accuracy}')
 
+model1.summary()
 
+# Extract encoder inputs and states
+encoder_inputs = model1.input[0]  # First input to the model
+encoder_outputs, state_h_enc, state_c_enc = model1.layers[4].output  # LSTM layer output and states
+encoder_states = [state_h_enc, state_c_enc]
+    
+# Define the encoder model
+encoder_model = tf.keras.models.Model(encoder_inputs, encoder_states)
 
-# Define a function for inference
-def get_response_from_seq2seq_model(question, model, max_sequence_length, vocab, inv_vocab):
+# Define the decoder inputs and states
+decoder_inputs = model1.input[1]  # Second input to the model
+decoder_state_input_h = tf.keras.layers.Input(shape=(LSTM_SIZE,), name='input_3')
+decoder_state_input_c = tf.keras.layers.Input(shape=(LSTM_SIZE,), name='input_4')
+decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
+
+# Reuse embeddings and LSTM from the original model
+decoder_embedding = model1.layers[3](decoder_inputs)
+decoder_lstm = model1.layers[5]
+decoder_dense = model1.layers[6]
+
+decoder_outputs, state_h_dec, state_c_dec = decoder_lstm(
+    decoder_embedding, initial_state=decoder_states_inputs)
+decoder_states = [state_h_dec, state_c_dec]
+decoder_outputs = decoder_dense(decoder_outputs)
+
+# Define the decoder model
+decoder_model = tf.keras.models.Model(
+    [decoder_inputs] + decoder_states_inputs,
+    [decoder_outputs] + decoder_states)
+
+# Convert string to tokens
+def str_to_tokens(sentence, tokenizer, max_len_questions):
+    words = sentence.lower().split()
+    tokens_list = [tokenizer.word_index.get(word, tokenizer.word_index['<OUT>']) for word in words if word in tokenizer.word_index]
+    return pad_sequences([tokens_list], maxlen=max_len_questions, padding='post')
+
+def get_response_from_seq2seq_model(input_question, encoder_model, decoder_model, tokenizer, max_len_questions):
     # Preprocess the input question
-    preprocessed_question = preprocess_text_input(question)
-    # Tokenize the preprocessed question
-    tokenized_question = [vocab.get(word, vocab['<OUT>']) for word in preprocessed_question.split()]
+    input_question = preprocess_text_input(input_question)
+    
+    # Tokenize the input question
+    tokenized_question = tokenizer.texts_to_sequences([input_question])[0]
+    
     # Pad the tokenized question sequence
-    padded_question = pad_sequences([tokenized_question], maxlen=max_sequence_length, padding='post', truncating='post')
+    tokenized_question = pad_sequences([tokenized_question], maxlen=max_len_questions, padding='post')
     
-    # Initialize the decoder input with SOS token
-    decoder_input = np.zeros((1, max_sequence_length))
-    decoder_input[0, 0] = vocab['<SOS>']
+    # Initialize the decoder input with the start token
+    decoder_input = np.zeros((1, 1))
+    decoder_input[0, 0] = tokenizer.word_index['<START>']
+    
+    # Initialize the states values
+    states_values = encoder_model.predict(tokenized_question)
+    
+    # Initialize the stop condition flag and decoded translation
+    stop_condition = False
+    decoded_translation = ''
+    
+    while not stop_condition:
+        # Predict the output sequence for the current decoder input and states values
+        dec_outputs, h, c = decoder_model.predict([decoder_input] + states_values)
+        
+        # Get the index of the word with the highest probability in the output sequence
+        sampled_word_index = np.argmax(dec_outputs[0, -1, :])
+        
+        # Find the word corresponding to the sampled word index in the tokenizer
+        sampled_word = tokenizer.index_word.get(sampled_word_index, '<OUT>')
+        
+        # Append the sampled word to the decoded translation
+        decoded_translation += ' ' + sampled_word
+        
+        # Update the decoder input for the next iteration
+        decoder_input = np.zeros((1, 1))
+        decoder_input[0, 0] = sampled_word_index
+        
+        # Check if the stop condition is met
+        if sampled_word == '<END>' or len(decoded_translation.split()) > 100:
+            stop_condition = True
+        
+        # Update the states values for the next iteration
+        states_values = [h, c]
 
-    # Predict the entire sequence
-    predictions = model.predict([padded_question, decoder_input])[0]
+        # Clean up the response by removing occurrences of "end" and "<OUT>"
+        cleaned_response = clean_response(decoded_translation)
     
-    # Generate the response from predictions
-    answer = ''
-    for pred in predictions:
-        predicted_word_index = pred.argmax(axis=-1)
-        predicted_word = inv_vocab.get(predicted_word_index, '<OUT>')
-        if predicted_word == '<EOS>':
-            break
-        answer += predicted_word + ' '
-    
-    return answer.strip()
+    return cleaned_response.strip()
+
+def clean_response(response):
+    # Remove occurrences of "end" and "<OUT>" from the response
+    cleaned_response = response.replace(' end', '').replace('<OUT>', '').strip()
+    return cleaned_response
 
 def start_chat(user_input):
     database = retrieve_db_for_lda()
@@ -359,12 +428,16 @@ def start_chat(user_input):
         return custom_response
 
     database_response = get_response_from_database(user_input, database)
-    seq2seq_model = load_seq2seq_model()
-    seq2seq_response = get_response_from_seq2seq_model(user_input, seq2seq_model, max_sequence_length, vocab, inv_vocab)
+    seq2seq_response = get_response_from_seq2seq_model(user_input, encoder_model, decoder_model, tokenizer, maxlen_questions)
 
-    return database_response if database_response else seq2seq_response
+    # Display both responses
+    response = f"\nUAQTEbot-Seq2Seq Model response: \n\n{seq2seq_response}\n\n\nUAQTEbot-Levenshetin Distance Algorithm response: \n\n{database_response}"
+    return response
 
 # Start the chatbot
 if __name__ == "__main__":
-    start_chat()
+    user_input = input("You: ")
+    print(user_input)
+    response = start_chat(user_input)
+    print(response)
 
